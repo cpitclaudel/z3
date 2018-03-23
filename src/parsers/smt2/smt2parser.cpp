@@ -39,7 +39,7 @@ namespace smt2 {
     class parser {
         cmd_context &        m_ctx;
         params_ref           m_params;
-        scanner              m_scanner;
+        scanner*             m_scanner;
         scanner::token       m_curr;
         cmd *                m_curr_cmd;
         stack                m_stack;
@@ -319,8 +319,8 @@ namespace smt2 {
         int m_num_open_paren;
 
         void scan_core() {
-            m_cache_end = m_scanner.cache_size();
-            m_curr      = m_scanner.scan();
+            m_cache_end = m_scanner->cache_size();
+            m_curr      = m_scanner->scan();
         }
 
         void scan() {
@@ -353,8 +353,8 @@ namespace smt2 {
                     SASSERT(m_num_open_paren >= 0);
                     while (m_num_open_paren > 0 || !curr_is_lparen()) {
                         TRACE("sync", tout << "sync(): curr: " << curr() << "\n";
-                              tout << "m_num_open_paren: " << m_num_open_paren << ", line: " << m_scanner.get_line() << ", pos: "
-                              << m_scanner.get_pos() << "\n";);
+                              tout << "m_num_open_paren: " << m_num_open_paren << ", line: " << m_scanner->get_line() << ", pos: "
+                              << m_scanner->get_pos() << "\n";);
                         if (curr() == scanner::EOF_TOKEN) {
                             return false;
                         }
@@ -382,8 +382,8 @@ namespace smt2 {
             throw parser_exception(msg);
         }
 
-        symbol const & curr_id() const { return m_scanner.get_id(); }
-        rational curr_numeral() const { return m_scanner.get_number(); }
+        symbol const & curr_id() const { return m_scanner->get_id(); }
+        rational curr_numeral() const { return m_scanner->get_number(); }
         unsigned curr_unsigned() {
             rational n = curr_numeral();
             if (!n.is_unsigned())
@@ -452,7 +452,7 @@ namespace smt2 {
         }
 
         void error(char const * msg) {
-            error(m_scanner.get_line(), m_scanner.get_pos(), msg);
+            error(m_scanner->get_line(), m_scanner->get_pos(), msg);
         }
 
         void error_wo_pos(char const * msg) {
@@ -510,8 +510,8 @@ namespace smt2 {
             (void)stack_pos;
             unsigned num_frames = 0;
             do {
-                unsigned line = m_scanner.get_line();
-                unsigned pos  = m_scanner.get_pos();
+                unsigned line = m_scanner->get_line();
+                unsigned pos  = m_scanner->get_pos();
                 switch (curr()) {
                 case scanner::LEFT_PAREN: {
                     void * mem = m_stack.allocate(sizeof(sexpr_frame));
@@ -543,14 +543,14 @@ namespace smt2 {
                     sexpr_stack().push_back(sm().mk_keyword(curr_id(), line, pos));
                     break;
                 case scanner::STRING_TOKEN:
-                    sexpr_stack().push_back(sm().mk_string(m_scanner.get_string(), line, pos));
+                    sexpr_stack().push_back(sm().mk_string(m_scanner->get_string(), line, pos));
                     break;
                 case scanner::INT_TOKEN:
                 case scanner::FLOAT_TOKEN:
                     sexpr_stack().push_back(sm().mk_numeral(curr_numeral(), line, pos));
                     break;
                 case scanner::BV_TOKEN:
-                    sexpr_stack().push_back(sm().mk_bv_numeral(curr_numeral(), m_scanner.get_bv_size(), line, pos));
+                    sexpr_stack().push_back(sm().mk_bv_numeral(curr_numeral(), m_scanner->get_bv_size(), line, pos));
                     break;
                 case scanner::EOF_TOKEN:
                     throw parser_exception("invalid s-expression, unexpected end of file");
@@ -852,8 +852,8 @@ namespace smt2 {
             SASSERT(curr_is_identifier());
             SASSERT(curr_id() == m_declare_datatypes);
             next();
-            unsigned line = m_scanner.get_line();
-            unsigned pos  = m_scanner.get_pos();
+            unsigned line = m_scanner->get_line();
+            unsigned pos  = m_scanner->get_pos();
             m_dt_name2idx.reset();
             bool is_smt2_6 = parse_sort_decl_or_params();
             unsigned i = 0;
@@ -930,8 +930,8 @@ namespace smt2 {
             SASSERT(curr_is_identifier());
             SASSERT(curr_id() == m_declare_datatype);
             next();
-            unsigned line = m_scanner.get_line();
-            unsigned pos  = m_scanner.get_pos();
+            unsigned line = m_scanner->get_line();
+            unsigned pos  = m_scanner->get_pos();
             symbol dt_name = curr_id();
             next();
 
@@ -1170,14 +1170,14 @@ namespace smt2 {
 
         void parse_bv_numeral() {
             SASSERT(curr() == scanner::BV_TOKEN);
-            expr_stack().push_back(butil().mk_numeral(curr_numeral(), m_scanner.get_bv_size()));
+            expr_stack().push_back(butil().mk_numeral(curr_numeral(), m_scanner->get_bv_size()));
             TRACE("parse_bv_numeral", tout << "new numeral: " << mk_pp(expr_stack().back(), m()) << "\n";);
             next();
         }
 
         void parse_string_const() {
             SASSERT(curr() == scanner::STRING_TOKEN);
-            expr_stack().push_back(sutil().str.mk_string(symbol(m_scanner.get_string())));
+            expr_stack().push_back(sutil().str.mk_string(symbol(m_scanner->get_string())));
             TRACE("smt2parser", tout << "new string: " << mk_pp(expr_stack().back(), m()) << "\n";);
             next();
         }
@@ -1918,7 +1918,7 @@ namespace smt2 {
             unsigned j = begin_pats;
             for (unsigned i = begin_pats; i < end_pats; i++) {
                 expr * pat = pattern_stack().get(i);
-                if (!pat_validator()(num_decls, pat, m_scanner.get_line(), m_scanner.get_pos())) {
+                if (!pat_validator()(num_decls, pat, m_scanner->get_line(), m_scanner->get_pos())) {
                     if (!ignore_bad_patterns())
                         throw parser_exception("invalid pattern");
                     continue;
@@ -1934,7 +1934,7 @@ namespace smt2 {
             TRACE("skid", tout << "fr->m_skid: " << fr->m_skid << "\n";);
             TRACE("parse_quantifier", tout << "body:\n" << mk_pp(expr_stack().back(), m()) << "\n";);
             if (fr->m_qid == symbol::null)
-                fr->m_qid = symbol(m_scanner.get_line());
+                fr->m_qid = symbol(m_scanner->get_line());
             if (!m().is_bool(expr_stack().back()))
                 throw parser_exception("quantifier body must be a Boolean expression");
             quantifier * new_q = m().mk_quantifier(fr->m_forall,
@@ -2454,14 +2454,14 @@ namespace smt2 {
             m_last_named_expr.first  = symbol::null;
             m_last_named_expr.second = 0;
             if (m_ctx.interactive_mode()) {
-                m_scanner.start_caching();
+                m_scanner->start_caching();
                 m_cache_end = 0;
             }
             next();
             parse_expr();
             if (m_ctx.interactive_mode()) {
-                m_assert_expr = m_scanner.cached_str(0, m_cache_end);
-                m_scanner.stop_caching();
+                m_assert_expr = m_scanner->cached_str(0, m_cache_end);
+                m_scanner->stop_caching();
             }
             if (expr_stack().empty()) {
                 throw cmd_exception("invalid assert command, expression required as argument");
@@ -2552,7 +2552,7 @@ namespace smt2 {
             unsigned spos = expr_stack().size();
             unsigned cache_it = 0;
 
-            m_scanner.start_caching();
+            m_scanner->start_caching();
             m_cache_end = 0;
             m_cached_strings.resize(0);
 
@@ -2561,10 +2561,10 @@ namespace smt2 {
                 parse_expr();
                 if (!is_ground(expr_stack().back()))
                     throw cmd_exception("invalid get-value term, term must be ground and must not contain quantifiers");
-                m_cached_strings.push_back(m_scanner.cached_str(cache_it, m_cache_end));
+                m_cached_strings.push_back(m_scanner->cached_str(cache_it, m_cache_end));
                 cache_it = m_cache_end;
             }
-            m_scanner.stop_caching();
+            m_scanner->stop_caching();
             if (m_cached_strings.empty())
                 throw cmd_exception("invalid get-value command, empty list of terms");
             next();
@@ -2620,15 +2620,15 @@ namespace smt2 {
             case scanner::BV_TOKEN:
             case scanner::INT_TOKEN:
             case scanner::FLOAT_TOKEN:
-                m_curr_cmd->set_next_arg(m_ctx, m_scanner.get_number());
+                m_curr_cmd->set_next_arg(m_ctx, m_scanner->get_number());
                 next();
                 break;
             case scanner::SYMBOL_TOKEN:
-                m_curr_cmd->set_next_arg(m_ctx, m_scanner.get_id());
+                m_curr_cmd->set_next_arg(m_ctx, m_scanner->get_id());
                 next();
                 break;
             case scanner::STRING_TOKEN:
-                m_curr_cmd->set_next_arg(m_ctx, m_scanner.get_string());
+                m_curr_cmd->set_next_arg(m_ctx, m_scanner->get_string());
                 next();
                 break;
             default:
@@ -2722,7 +2722,7 @@ namespace smt2 {
                 break;
             case CPK_STRING:
                 check_string("invalid command argument, string expected");
-                m_curr_cmd->set_next_arg(m_ctx, m_scanner.get_string());
+                m_curr_cmd->set_next_arg(m_ctx, m_scanner->get_string());
                 next();
                 break;
             case CPK_KEYWORD:
@@ -2799,7 +2799,7 @@ namespace smt2 {
             while (!curr_is_rparen()) {
                 consume_sexpr();
             }
-            m_ctx.print_unsupported(s, m_scanner.get_line(), m_scanner.get_pos());
+            m_ctx.print_unsupported(s, m_scanner->get_line(), m_scanner->get_pos());
             next();
             return;
         }
@@ -2849,8 +2849,8 @@ namespace smt2 {
 
         void parse_cmd() {
             SASSERT(curr_is_lparen());
-            int line = m_scanner.get_line();
-            int pos  = m_scanner.get_pos();
+            int line = m_scanner->get_line();
+            int pos  = m_scanner->get_pos();
             next();
             check_identifier("invalid command, symbol expected");
             symbol s = curr_id();
@@ -2926,10 +2926,10 @@ namespace smt2 {
         }
 
     public:
-        parser(cmd_context & ctx, std::istream & is, bool interactive, params_ref const & p, char const * filename=nullptr):
+        parser(cmd_context & ctx, params_ref const & p, char const * filename=nullptr):
             m_ctx(ctx),
             m_params(p),
-            m_scanner(ctx, is, interactive),
+            m_scanner(nullptr),
             m_curr(scanner::NULL_TOKEN),
             m_curr_cmd(nullptr),
             m_num_bindings(0),
@@ -3010,7 +3010,8 @@ namespace smt2 {
             m_var_shifter       = nullptr;
         }
 
-        bool operator()() {
+        bool operator()(smt2::scanner *sc) {
+            m_scanner = sc;
             m_num_bindings    = 0;
             bool found_errors = false;
 
@@ -3043,12 +3044,12 @@ namespace smt2 {
                 catch (z3_error & ex) {
                     // Can't invoke error(...) when out of memory.
                     // Reason: escaped() string builder needs memory
-                    m_ctx.regular_stream() << "(error \"line " << m_scanner.get_line() << " column " << m_scanner.get_pos()
+                    m_ctx.regular_stream() << "(error \"line " << m_scanner->get_line() << " column " << m_scanner->get_pos()
                                            << ": " << ex.msg() << "\")" << std::endl;
                     exit(ex.error_code());
                 }
                 catch (stop_parser_exception) {
-                    m_scanner.stop_caching();
+                    m_scanner->stop_caching();
                     return !found_errors;
                 }
                 catch (parser_exception & ex) {
@@ -3063,7 +3064,7 @@ namespace smt2 {
                 catch (z3_exception & ex) {
                     error(ex.msg());
                 }
-                m_scanner.stop_caching();
+                m_scanner->stop_caching();
                 if (m_curr_cmd)
                     m_curr_cmd->failure_cleanup(m_ctx);
                 reset();
@@ -3077,8 +3078,29 @@ namespace smt2 {
     };
 };
 
+int sendone(smt2::parser& p, cmd_context & ctx, const char* string) {
+  std::istringstream is = std::istringstream(string);
+  smt2::scanner sc = smt2::scanner(ctx, is, true);
+  return p(&sc);
+}
+
 bool parse_smt2_commands(cmd_context & ctx, std::istream & is, bool interactive, params_ref const & ps, char const * filename) {
-    smt2::parser p(ctx, is, interactive, ps, filename);
-    return p();
+  smt2::parser p(ctx, ps, filename);
+  sendone(p, ctx, "(declare-fun x () Int)");
+  sendone(p, ctx, "(declare-fun y () Int)");
+  sendone(p, ctx, "(declare-fun z () Int)");
+  sendone(p, ctx, "(assert (>= (* 2 x) (+ y z)))");
+  sendone(p, ctx, "(declare-fun f (Int) Int)");
+  sendone(p, ctx, "(declare-fun g (Int Int) Int)");
+  sendone(p, ctx, "(assert (< (f x) (g x x)))");
+  sendone(p, ctx, "(assert (> (f y) (g x x)))");
+  sendone(p, ctx, "(check-sat)");
+  sendone(p, ctx, "(get-model)");
+  sendone(p, ctx, "(push)");
+  sendone(p, ctx, "(assert (= x y))");
+  sendone(p, ctx, "(check-sat)");
+  sendone(p, ctx, "(pop)");
+  sendone(p, ctx, "(exit)");
+  return 0;
 }
 
